@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Receipt AI</title>
+<style>
+  :root {
+    --bg1: #0f172a; --bg2: #1e1b4b; --bg3: #064e3b;
+    --text: #e2e8f0; --muted: #94a3b8; --accent: #38bdf8; --green: #76b900;
+    --card: rgba(255, 255, 255, 0.07); --border: rgba(255, 255, 255, 0.14);
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: linear-gradient(135deg, var(--bg1), var(--bg2), var(--bg3), var(--bg1));
+    background-size: 300% 300%;
+    animation: bgmove 18s ease infinite;
+    min-height: 100vh; overflow-x: hidden;
+  }
+  @keyframes bgmove { 0% { background-position: 0% 50%; } 50% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }
+
+  /* floating receipts */
+  .float { position: fixed; font-size: 2rem; opacity: 0.15; pointer-events: none; animation: floaty 12s ease-in-out infinite; }
+  .float:nth-child(1) { left: 6%;  top: 18%; animation-delay: 0s; }
+  .float:nth-child(2) { left: 88%; top: 30%; animation-delay: 2s; font-size: 2.6rem; }
+  .float:nth-child(3) { left: 14%; top: 70%; animation-delay: 4s; }
+  .float:nth-child(4) { left: 80%; top: 78%; animation-delay: 6s; font-size: 2.4rem; }
+  @keyframes floaty { 0%, 100% { transform: translateY(0) rotate(-6deg); } 50% { transform: translateY(-28px) rotate(8deg); } }
+
+  .wrap { position: relative; max-width: 1000px; margin: 0 auto; padding: 0 20px 40px; }
+  header { text-align: center; padding: 56px 0 24px; }
+  h1 { font-size: clamp(2.2rem, 6vw, 3.6rem); margin: 0 0 10px; animation: drop 0.9s ease both; }
+  h1 span { background: linear-gradient(90deg, var(--accent), var(--green), var(--accent)); background-size: 200% auto;
+            -webkit-background-clip: text; background-clip: text; color: transparent; animation: shine 4s linear infinite; }
+  @keyframes shine { to { background-position: 200% center; } }
+  @keyframes drop { from { opacity: 0; transform: translateY(-24px); } to { opacity: 1; transform: none; } }
+  .sub { color: var(--muted); font-size: 1.1rem; max-width: 640px; margin: 0 auto 22px; animation: rise 1s 0.2s ease both; }
+  @keyframes rise { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: none; } }
+
+  .btns { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; animation: rise 1s 0.4s ease both; }
+  .btn { display: inline-block; padding: 12px 22px; border-radius: 999px; text-decoration: none; font-weight: 600;
+         transition: transform 0.2s, box-shadow 0.2s; }
+  .btn:hover { transform: translateY(-3px) scale(1.04); }
+  .primary { background: linear-gradient(90deg, var(--accent), var(--green)); color: #04111f; animation: pulse 2.2s infinite; }
+  @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.55); } 70% { box-shadow: 0 0 0 16px rgba(56, 189, 248, 0); } 100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); } }
+  .ghost { border: 1px solid var(--border); color: var(--text); background: var(--card); }
+
+  /* reveal on scroll */
+  .reveal { opacity: 0; transform: translateY(32px); transition: opacity 0.8s ease, transform 0.8s ease; }
+  .reveal.show { opacity: 1; transform: none; }
+
+  /* demo box */
+  .demo { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; margin: 34px 0; }
+  @media (max-width: 720px) { .demo { grid-template-columns: 1fr; } }
+  .panel { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 18px; backdrop-filter: blur(6px); }
+  .panel h3 { margin: 0 0 10px; font-size: 0.95rem; color: var(--muted); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; }
+  .receipt { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.9rem; line-height: 1.6; position: relative; overflow: hidden; }
+  .scan { position: absolute; left: 0; right: 0; height: 3px; background: var(--accent); box-shadow: 0 0 14px var(--accent);
+          animation: scan 2.8s ease-in-out infinite; }
+  @keyframes scan { 0% { top: 0; } 50% { top: 100%; } 100% { top: 0; } }
+  .out { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 0.95rem; line-height: 1.8; min-height: 110px; }
+  .out b { color: var(--green); }
+  .cursor { display: inline-block; width: 8px; height: 1em; background: var(--accent); vertical-align: -2px; animation: blink 0.9s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  .note { color: var(--muted); font-size: 0.8rem; margin-top: 8px; }
+
+  /* cards */
+  .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 34px; }
+  @media (max-width: 720px) { .cards { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 16px; padding: 20px; transition: transform 0.25s, border-color 0.25s, box-shadow 0.25s; }
+  .card:hover { transform: translateY(-8px); border-color: var(--accent); box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35); }
+  .card .ic { font-size: 2rem; display: inline-block; transition: transform 0.4s; }
+  .card:hover .ic { transform: rotate(-10deg) scale(1.2); }
+  .card h3 { margin: 10px 0 6px; }
+  .card p { margin: 0; color: var(--muted); font-size: 0.95rem; }
+
+  /* app frame */
+  h2 { text-align: center; margin: 10px 0 14px; }
+  .frame { position: relative; border: 1px solid var(--border); border-radius: 16px; overflow: hidden; background: #fff; min-height: 300px; box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4); }
+  .frame iframe { width: 100%; height: 85vh; border: 0; display: block; opacity: 0; transition: opacity 0.8s; }
+  .frame iframe.ready { opacity: 1; }
+  .loader { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+            background: linear-gradient(135deg, #0f172a, #1e1b4b); color: var(--muted); transition: opacity 0.5s; }
+  .loader.hide { opacity: 0; pointer-events: none; }
+  .spin { width: 46px; height: 46px; border-radius: 50%; border: 4px solid rgba(255, 255, 255, 0.15); border-top-color: var(--accent); animation: spin 0.9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  footer { text-align: center; color: var(--muted); font-size: 0.9rem; padding: 26px 0 10px; }
+  footer a { color: var(--accent); }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation: none !important; transition: none !important; }
+    .reveal { opacity: 1; transform: none; }
+    .frame iframe { opacity: 1; }
+  }
+</style>
+</head>
+<body>
+<div class="float">🧾</div><div class="float">🧾</div><div class="float">🧾</div><div class="float">🧾</div>
+
+<div class="wrap">
+  <header>
+    <h1>🧾 <span>Receipt AI</span></h1>
+    <p class="sub">Extract the company, date and total from a receipt. A small fine-tuned model goes head to head with NVIDIA Nemotron on Nebius Token Factory.</p>
+    <div class="btns">
+      <a class="btn primary" href="#app">Try the app</a>
+      <a class="btn ghost" href="https://github.com/192525146simats-beep/Nebius-x-NVIDIA-Global-AI-Hackathon">GitHub repo</a>
+      <a class="btn ghost" id="open" href="YOUR_STREAMLIT_URL">Open app in new tab</a>
+    </div>
+  </header>
+
+  <section class="demo reveal">
+    <div class="panel">
+      <h3>Receipt text</h3>
+      <div class="receipt">
+        <div class="scan"></div>
+        ACME STORES SDN BHD<br>
+        NO 12 JALAN BUNGA, KL<br>
+        DATE: 12/03/2018<br>
+        1 x COFFEE &nbsp;&nbsp;&nbsp; 12.90<br>
+        2 x SANDWICH &nbsp; 33.00<br>
+        TOTAL RM 45.90
+      </div>
+    </div>
+    <div class="panel">
+      <h3>Extracted fields</h3>
+      <div class="out" id="out"></div>
+      <div class="note">Illustrative example, not a measured result. See the Results tab in the app for real numbers.</div>
+    </div>
+  </section>
+
+  <section class="cards">
+    <div class="card reveal"><span class="ic">🎯</span><h3>Fine-tuned model</h3><p>flan-t5-small trained on the SROIE v2 receipts dataset.</p></div>
+    <div class="card reveal"><span class="ic">⚡</span><h3>NVIDIA Nemotron</h3><p>Zero-shot baseline served from Nebius Token Factory.</p></div>
+    <div class="card reveal"><span class="ic">📊</span><h3>Side by side</h3><p>Compare fields, latency and estimated cost on the same receipt.</p></div>
+  </section>
+
+  <section id="app" class="reveal">
+    <h2>Live demo</h2>
+    <div class="frame">
+      <div class="loader" id="loader"><div class="spin"></div><div>Waking up the app, this can take a minute...</div></div>
+      <!-- REPLACE YOUR_STREAMLIT_URL below with your Streamlit app URL (keep ?embed=true) -->
+      <iframe id="appframe" src="YOUR_STREAMLIT_URL?embed=true" title="Receipt AI app"></iframe>
+    </div>
+  </section>
+
+  <footer>Built for the Nebius x NVIDIA Global AI Hackathon · <a href="https://github.com/192525146simats-beep/Nebius-x-NVIDIA-Global-AI-Hackathon">Source code</a></footer>
+</div>
+
+<script>
+  // scroll reveal
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add("show"); io.unobserve(e.target); } });
+  }, { threshold: 0.15 });
+  document.querySelectorAll(".reveal").forEach(function (el, i) { el.style.transitionDelay = (i % 3) * 120 + "ms"; io.observe(el); });
+
+  // typing animation (loops)
+  var lines = [
+    ["company", "ACME STORES SDN BHD"],
+    ["date", "12/03/2018"],
+    ["total", "45.90"]
+  ];
+  var out = document.getElementById("out");
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function render(done, partial) {
+    var html = "";
+    for (var i = 0; i < done; i++) html += lines[i][0] + ": <b>" + lines[i][1] + "</b><br>";
+    if (partial !== null) html += partial + '<span class="cursor"></span>';
+    out.innerHTML = html;
+  }
+  function typeLoop() {
+    if (reduce) { render(3, null); return; }
+    var li = 0, ci = 0;
+    function step() {
+      if (li >= lines.length) { render(3, null); setTimeout(function () { li = 0; ci = 0; render(0, ""); setTimeout(step, 600); }, 3500); return; }
+      var label = lines[li][0], val = lines[li][1];
+      ci++;
+      render(li, label + ": <b>" + val.slice(0, ci) + "</b>");
+      if (ci >= val.length) { li++; ci = 0; setTimeout(step, 450); } else { setTimeout(step, 55); }
+    }
+    render(0, "");
+    setTimeout(step, 600);
+  }
+  typeLoop();
+
+  // hide loader once the Streamlit app loads
+  var fr = document.getElementById("appframe");
+  fr.addEventListener("load", function () {
+    fr.classList.add("ready");
+    document.getElementById("loader").classList.add("hide");
+  });
+</script>
+</body>
+</html>
