@@ -2,6 +2,7 @@ import html, json, re, time
 from pathlib import Path
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 
 st.set_page_config(page_title="Receipt AI", page_icon="🧾", layout="wide")
 
@@ -20,7 +21,6 @@ CSS = """
 @keyframes fadeUp { from{opacity:0; transform:translateY(18px)} to{opacity:1; transform:none} }
 @keyframes shine { to { background-position: 200% center; } }
 @keyframes grow { from{width:0} to{width:var(--w)} }
-@keyframes track { from{background-position:0 0} to{background-position:-30px 0} }
 @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(56,189,248,.5)} 70%{box-shadow:0 0 0 12px rgba(56,189,248,0)} 100%{box-shadow:0 0 0 0 rgba(56,189,248,0)} }
 @keyframes slideIn { from{opacity:0; transform:translateX(-22px)} to{opacity:1; transform:none} }
 
@@ -29,14 +29,6 @@ CSS = """
   background:linear-gradient(90deg,#38bdf8,#76b900,#38bdf8); background-size:200% auto;
   -webkit-background-clip:text; background-clip:text; color:transparent; animation:shine 4s linear infinite; }
 .brand .s { font-size:.7rem; letter-spacing:.16em; opacity:.6; text-transform:uppercase; }
-
-.hero { background:linear-gradient(135deg,#0f172a,#1e1b4b 55%,#064e3b); border-radius:20px; padding:30px 34px;
-  color:#e2e8f0; overflow:hidden; animation:fadeUp .8s ease both; margin-bottom:18px; }
-.hero .tag { font-family:ui-monospace,Menlo,monospace; letter-spacing:.14em; font-size:.72rem; color:#fbbf24; }
-.hero h1 { color:#fff; margin:8px 0 6px; font-size:2.3rem; line-height:1.15; }
-.hero p { color:#cbd5e1; margin:0; max-width:680px; }
-.hero .bar { height:10px; margin-top:20px; border-radius:99px; opacity:.85;
-  background:repeating-linear-gradient(90deg,#76b900 0 18px,transparent 18px 30px); animation:track 1s linear infinite; }
 
 .ptitle { font-size:1.9rem; font-weight:800; margin:4px 0 0; animation:fadeUp .6s ease both; }
 .psub { opacity:.65; margin:0 0 16px; }
@@ -78,7 +70,135 @@ CSS = """
 @media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
 </style>
 """
-st.markdown(CSS, unsafe_allow_html=True)
+
+LIGHT = """
+.stApp,[data-testid="stAppViewContainer"],[data-testid="stHeader"]{background:#f6f3ea !important}
+[data-testid="stSidebar"],[data-testid="stSidebar"]>div{background:#fffdf7 !important}
+.stApp h1,.stApp h2,.stApp h3,.stApp h4,.stApp p,.stApp li,.stApp label,.stApp small,.stApp span,.stApp code{color:#1e293b !important}
+.stApp [data-testid="stBaseButton-primary"] *,.stApp button[kind="primary"] *{color:#ffffff !important}
+.stApp .brand .t{color:transparent !important}
+[data-baseweb="input"],[data-baseweb="textarea"],[data-baseweb="base-input"],[data-testid="stFileUploaderDropzone"],[data-testid="stNumberInputContainer"]{background:#ffffff !important}
+textarea,input{color:#1e293b !important;-webkit-text-fill-color:#1e293b !important}
+.kpi,.step,.fcard{background:rgba(255,255,255,.78) !important}
+"""
+
+DARK = """
+.stApp,[data-testid="stAppViewContainer"],[data-testid="stHeader"]{background:#0e1117 !important}
+[data-testid="stSidebar"],[data-testid="stSidebar"]>div{background:#161b26 !important}
+.stApp h1,.stApp h2,.stApp h3,.stApp h4,.stApp p,.stApp li,.stApp label,.stApp small,.stApp span,.stApp code{color:#e6e9ef !important}
+.stApp [data-testid="stBaseButton-primary"] *,.stApp button[kind="primary"] *{color:#ffffff !important}
+.stApp .brand .t{color:transparent !important}
+[data-baseweb="input"],[data-baseweb="textarea"],[data-baseweb="base-input"],[data-testid="stFileUploaderDropzone"],[data-testid="stNumberInputContainer"]{background:#1b212d !important}
+textarea,input{color:#e6e9ef !important;-webkit-text-fill-color:#e6e9ef !important}
+.kpi,.step,.fcard{background:rgba(255,255,255,.04) !important}
+"""
+
+
+def appearance_css(mode):
+    if mode == "Light":
+        return f"<style>{LIGHT}</style>"
+    if mode == "Dark":
+        return f"<style>{DARK}</style>"
+    return (f"<style>@media (prefers-color-scheme: light){{{LIGHT}}} "
+            f"@media (prefers-color-scheme: dark){{{DARK}}}</style>")
+
+
+HERO_HTML = """
+<style>
+  html,body{margin:0;background:transparent;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+  .hero{position:relative;overflow:hidden;border-radius:20px;height:330px;color:#e2e8f0;
+        background:linear-gradient(135deg,#0f172a,#1e1b4b 55%,#064e3b)}
+  canvas{position:absolute;inset:0;width:100%;height:100%}
+  .txt{position:relative;z-index:2;padding:30px 34px;max-width:52%}
+  .tag{font-family:ui-monospace,Menlo,monospace;letter-spacing:.14em;font-size:.7rem;color:#fbbf24}
+  h1{margin:10px 0 10px;font-size:2rem;line-height:1.15;color:#fff}
+  p{margin:0;color:#cbd5e1;font-size:.95rem;line-height:1.5}
+  @media(max-width:720px){.txt{max-width:100%}canvas{opacity:.3}h1{font-size:1.6rem}}
+</style>
+<div class="hero">
+  <canvas id="c"></canvas>
+  <div class="txt">
+    <div class="tag">RESEARCH PROTOTYPE · FLAN-T5 · NVIDIA NEMOTRON · NEBIUS</div>
+    <h1>Pull the company, date and total out of any receipt</h1>
+    <p>A small fine-tuned model competes with NVIDIA Nemotron on Nebius Token Factory. Try it on your own receipts, then explore how both did on a held-out test set.</p>
+  </div>
+</div>
+<script>
+const cv=document.getElementById('c'),ctx=cv.getContext('2d');
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const dpr=Math.min(window.devicePixelRatio||1,2);
+const LAYERS=[4,6,6,3],LABELS=['company','date','total'],COL=['#38bdf8','#818cf8','#a78bfa','#76b900'];
+let W=0,H=0,nodes=[],edges=[],redges=[],pulses=[],rx=0,ry=0,narrow=false,last=0,lastFrame=0;
+
+function layout(){
+  const r=cv.getBoundingClientRect();W=r.width;H=r.height;
+  cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);
+  narrow=W<720;nodes=[];edges=[];redges=[];pulses=[];
+  const x0=narrow?W*0.40:W*0.60,x1=narrow?W*0.78:W*0.84;
+  LAYERS.forEach(function(n,l){
+    const x=x0+(x1-x0)*l/(LAYERS.length-1);
+    for(let i=0;i<n;i++){nodes.push({x:x,y:H*0.16+(H*0.68)*i/(n-1),l:l,i:i,g:0});}
+  });
+  nodes.forEach(function(a){nodes.forEach(function(b){if(b.l===a.l+1)edges.push({a:a,b:b});});});
+  rx=narrow?W*0.2:W*0.5;ry=H*0.5;
+  nodes.filter(function(n){return n.l===0;}).forEach(function(n){redges.push({a:{x:rx+28,y:ry},b:n});});
+  if(reduce){nodes.forEach(function(n){if(n.l===LAYERS.length-1)n.g=1;});}
+}
+function send(e){pulses.push({a:e.a,b:e.b,t:0,s:0.016+Math.random()*0.01});}
+function outgoing(n){return edges.filter(function(e){return e.a===n;});}
+function line(e){ctx.beginPath();ctx.moveTo(e.a.x,e.a.y);ctx.lineTo(e.b.x,e.b.y);ctx.stroke();}
+
+function drawReceipt(now){
+  const x=rx-28,y=ry-46;
+  ctx.beginPath();
+  if(ctx.roundRect){ctx.roundRect(x,y,56,92,6);}else{ctx.rect(x,y,56,92);}
+  ctx.fillStyle='rgba(255,255,255,.93)';ctx.fill();
+  for(let i=0;i<7;i++){
+    ctx.fillStyle=(i===0||i===2||i===5)?'#38bdf8':'#cbd5e1';
+    ctx.fillRect(x+8,y+10+i*11,(i%2)?38:28,3);
+  }
+  const yy=y+((now/14)%92);
+  ctx.save();ctx.strokeStyle='#38bdf8';ctx.shadowColor='#38bdf8';ctx.shadowBlur=10;ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(x-4,yy);ctx.lineTo(x+60,yy);ctx.stroke();ctx.restore();
+}
+
+function draw(now){
+  const dt=Math.min(40,(now-lastFrame)||16);lastFrame=now;
+  ctx.clearRect(0,0,W,H);
+  ctx.lineWidth=1;
+  ctx.strokeStyle='rgba(148,163,184,.16)';edges.forEach(line);
+  ctx.strokeStyle='rgba(148,163,184,.24)';redges.forEach(line);
+  drawReceipt(now);
+  for(let i=pulses.length-1;i>=0;i--){
+    const p=pulses[i];p.t+=p.s*dt/16.7;
+    if(p.t>=1){
+      p.b.g=1;
+      if(p.b.l<LAYERS.length-1){
+        const o=outgoing(p.b),k=1+(Math.random()<0.5?1:0);
+        for(let j=0;j<k;j++)send(o[Math.floor(Math.random()*o.length)]);
+      }
+      pulses.splice(i,1);continue;
+    }
+    const x=p.a.x+(p.b.x-p.a.x)*p.t,y=p.a.y+(p.b.y-p.a.y)*p.t;
+    ctx.save();ctx.beginPath();ctx.fillStyle='#38bdf8';ctx.shadowColor='#38bdf8';ctx.shadowBlur=10;
+    ctx.arc(x,y,2.6,0,6.283);ctx.fill();ctx.restore();
+  }
+  nodes.forEach(function(n){
+    n.g*=0.93;const col=COL[n.l];
+    if(n.g>0.02){ctx.beginPath();ctx.fillStyle=col;ctx.globalAlpha=n.g*0.35;ctx.arc(n.x,n.y,6+n.g*9,0,6.283);ctx.fill();ctx.globalAlpha=1;}
+    ctx.beginPath();ctx.fillStyle=col;ctx.globalAlpha=0.55+0.45*n.g;ctx.arc(n.x,n.y,4.5,0,6.283);ctx.fill();ctx.globalAlpha=1;
+    if(n.l===LAYERS.length-1){
+      ctx.font='11px ui-monospace,Menlo,monospace';ctx.textBaseline='middle';
+      ctx.fillStyle='rgba(226,232,240,'+(0.45+0.55*n.g)+')';ctx.fillText(LABELS[n.i],n.x+11,n.y);
+    }
+  });
+  if(now-last>260&&pulses.length<40&&redges.length){last=now;send(redges[Math.floor(Math.random()*redges.length)]);}
+  if(!reduce)requestAnimationFrame(draw);
+}
+layout();requestAnimationFrame(draw);
+window.addEventListener('resize',function(){layout();if(reduce)draw(performance.now());});
+</script>
+"""
 
 
 # ---------- helpers ----------
@@ -153,6 +273,20 @@ def score_engine(df, col):
     return out
 
 
+def get_metrics(json_name, col, label):
+    d = load_json(json_name)
+    if d:
+        return d
+    df = load_predictions()
+    if df is not None and col in df.columns:
+        s = score_engine(df, col)
+        return {"n": len(df), "company": round(float(s["company"].mean()), 3),
+                "date": round(float(s["date"].mean()), 3), "total": round(float(s["total"].mean()), 3),
+                "all_fields": round(float(s["all"].mean()), 3),
+                "model": f"{label} (computed from results/predictions.csv)"}
+    return None
+
+
 def kpi(label, value, sub="", accent="#38bdf8"):
     return (f'<div class="kpi" style="border-top-color:{accent}"><div class="kl">{html.escape(label)}</div>'
             f'<div class="kv">{html.escape(str(value))}</div><div class="ks">{html.escape(sub)}</div></div>')
@@ -210,9 +344,12 @@ def ocr(img):
     return pytesseract.image_to_string(img)
 
 
-# ---------- navigation ----------
+# ---------- navigation + appearance ----------
+st.markdown(CSS, unsafe_allow_html=True)
 if "page" not in st.session_state:
     st.session_state["page"] = PAGES[0]
+if "appearance" not in st.session_state:
+    st.session_state["appearance"] = "Auto"
 
 
 def go(p):
@@ -224,26 +361,29 @@ with st.sidebar:
                 '<div class="s">Receipt field extraction</div></div>', unsafe_allow_html=True)
     st.radio("Navigate", PAGES, key="page", label_visibility="collapsed")
     st.divider()
+    st.markdown("**🎨 Appearance**")
+    st.radio("Appearance", ["Auto", "Light", "Dark"], key="appearance", horizontal=True,
+             label_visibility="collapsed")
+    st.caption("Auto follows your device's light/dark setting.")
+    st.divider()
     price = st.number_input("Nebius price per 1M tokens (USD). Copy it from the Nebius pricing page.",
                             0.0, 100.0, 0.0, 0.01)
     st.caption("Cost is only an estimate: tokens × the price you enter.")
     st.caption("Research prototype. Always check extracted values against the receipt.")
 
+st.markdown(appearance_css(st.session_state["appearance"]), unsafe_allow_html=True)
+
 
 # ---------- pages ----------
 def page_overview():
-    st.markdown(
-        '<div class="hero"><div class="tag">RESEARCH PROTOTYPE · FLAN-T5 · NVIDIA NEMOTRON · NEBIUS</div>'
-        '<h1>Pull the company, date and total out of any receipt</h1>'
-        '<p>A small fine-tuned model competes with NVIDIA Nemotron on Nebius Token Factory. '
-        'Try it on your own receipts, then explore how both did on a held-out test set.</p>'
-        '<div class="bar"></div></div>', unsafe_allow_html=True)
+    components.html(HERO_HTML, height=350)
 
     b1, b2, _ = st.columns([1, 1.3, 3])
     b1.button("🔍 Try the extractor", type="primary", on_click=go, args=(PAGES[1],))
     b2.button("📦 Open dataset dashboard", on_click=go, args=(PAGES[2],))
 
-    ft, nb = load_json("finetuned_metrics.json"), load_json("nemotron_zero_shot.json")
+    ft = get_metrics("finetuned_metrics.json", "ft_raw", "google/flan-t5-small (fine-tuned)")
+    nb = get_metrics("nemotron_zero_shot.json", "nemotron_raw", "NVIDIA Nemotron")
     c1, c2, c3, c4 = st.columns(4)
     c1.markdown(kpi("Held-out receipts", (ft or {}).get("n", "—"), "never seen in training"), unsafe_allow_html=True)
     c2.markdown(kpi("Fine-tuned · all 3 fields", fmt_pct((ft or {}).get("all_fields")), "exact match", "#76b900"),
@@ -396,15 +536,16 @@ def page_dataset():
 
 def page_performance():
     head("📊 Model Performance", "Same metric, same held-out receipts")
-    ft, nb = load_json("finetuned_metrics.json"), load_json("nemotron_zero_shot.json")
+    ft = get_metrics("finetuned_metrics.json", "ft_raw", "google/flan-t5-small (fine-tuned)")
+    nb = get_metrics("nemotron_zero_shot.json", "nemotron_raw", "NVIDIA Nemotron")
     if ft is None and nb is None:
-        st.warning("No metrics files found. Add results/finetuned_metrics.json and results/nemotron_zero_shot.json.")
+        st.warning("No metrics found. Add results/finetuned_metrics.json (or results/predictions.csv).")
     c1, c2 = st.columns(2)
     for col, data, cls, title in [(c1, ft, "ft", "🎯 Fine-tuned flan-t5-small"), (c2, nb, "nb", "⚡ NVIDIA Nemotron zero-shot")]:
         with col:
             st.markdown(f'<span class="engine {cls}">{title}</span>', unsafe_allow_html=True)
             if data is None:
-                st.info("Results file not found yet.")
+                st.info("Results not available yet.")
                 continue
             rows = ""
             for i, (k, lab) in enumerate([("company", "Company"), ("date", "Date"), ("total", "Total"), ("all_fields", "All 3 fields")]):
@@ -430,7 +571,8 @@ def page_guide():
     st.markdown(
         "**Extract** – upload a receipt photo or paste text, then press Extract. Both engines answer side by side.\n\n"
         "**Dataset Dashboard** – reads `results/predictions.csv`, one row per held-out receipt.\n\n"
-        "**Model Performance** – reads `results/finetuned_metrics.json` and `results/nemotron_zero_shot.json`.")
+        "**Model Performance** – reads `results/finetuned_metrics.json` and `results/nemotron_zero_shot.json`.\n\n"
+        "**Appearance** – Auto follows your device; Light and Dark override it.")
     st.markdown("#### Make the dashboard file (Kaggle)")
     st.code('import pandas as pd\n'
             'rows = [{"id": d["id"], "text": d["text"][:600], "gold_company": d["company"],\n'
